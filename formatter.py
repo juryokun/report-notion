@@ -1,34 +1,32 @@
-def format_summary(summary):
+def format_summary(
+    summary,
+    period_label,
+):
     lines = []
 
-    project_totals = summary["project_totals"]
-    project_tasks = summary["project_tasks"]
-    total_time = summary["total_time"]
-
-    # =========================
-    # Project Summary
-    # =========================
-
     lines.append("=== Project Summary ===")
+    lines.append(f"Period: {period_label}")
     lines.append("")
 
-    for project, spent in sorted(project_totals.items()):
+    for project, spent in sorted(
+        summary["project_totals"].items()
+    ):
         lines.append(
             f"{project}  {spent:.2f}h"
         )
 
     lines.append("--")
-    lines.append(f"Total  {total_time:.2f}h")
+    lines.append(
+        f"Total  {summary['total_time']:.2f}h"
+    )
 
     lines.append("")
     lines.append("=== Task Details ===")
     lines.append("")
 
-    # =========================
-    # Task Details
-    # =========================
-
-    for project, tasks in sorted(project_tasks.items()):
+    for project, tasks in sorted(
+        summary["project_tasks"].items()
+    ):
         lines.append(project)
 
         for task in tasks:

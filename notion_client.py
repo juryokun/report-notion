@@ -19,8 +19,9 @@ class NotionClient:
 
     def build_filter(
         self,
-        date=None,
         status="Done",
+        from_date=None,
+        to_date=None,
         project=None,
     ):
         conditions = []
@@ -34,27 +35,32 @@ class NotionClient:
                 }
             })
 
-        # Date filter
-        if date:
+        if from_date:
             conditions.append({
                 "property": "Date",
                 "date": {
-                    "equals": date
+                    "on_or_after": from_date
+                }
+            })
+
+        if to_date:
+            conditions.append({
+                "property": "Date",
+                "date": {
+                    "on_or_before": to_date
                 }
             })
 
         # Project filter
         if project:
             conditions.append({
-                "property": "Projects",
-                "select": {
-                    "equals": project
+                "property": "ProjectName",
+                "formula": {
+                    "string": {
+                        "equals": project
+                    }
                 }
             })
-
-        # 条件なしの場合
-        if not conditions:
-            return None
 
         return {
             "and": conditions
@@ -62,7 +68,7 @@ class NotionClient:
 
     def query_database(
         self,
-        filter_payload=None,
+        filter_payload,
         page_size=100,
     ):
         url = (
@@ -75,11 +81,9 @@ class NotionClient:
 
         while True:
             payload = {
+                "filter": filter_payload,
                 "page_size": page_size,
             }
-
-            if filter_payload:
-                payload["filter"] = filter_payload
 
             if next_cursor:
                 payload["start_cursor"] = next_cursor
