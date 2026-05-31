@@ -1,9 +1,8 @@
 import argparse
+import logging
+import sys
 
-from notion_client import NotionClient
-from summarizer import summarize
-from formatter import format_summary
-
+from clipboard import copy_to_clipboard
 from date_range import (
     today_range,
     yesterday_range,
@@ -12,52 +11,79 @@ from date_range import (
     month_range,
     last_month_range,
 )
+from formatter import (
+    format_project_summary,
+    format_task_details,
+)
+from notion_client import NotionClient
+from summarizer import summarize
+from report_type import (
+    daily_report,
+    weekly_report,
+    monthly_report,
+    quarterly_report,
+    semiannual_report,
+    annual_report,
+)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
+logger = logging.getLogger(__name__)
+
+
+def configure_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+    )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate Notion work reports."
+    )
 
     group = parser.add_mutually_exclusive_group()
 
     group.add_argument(
         "--today",
         action="store_true",
-        help="Today's report",
+        help="Today",
     )
 
     group.add_argument(
         "--yesterday",
         action="store_true",
-        help="Yesterday's report",
+        help="Yesterday",
     )
 
     group.add_argument(
         "--week",
         action="store_true",
-        help="This week's report",
+        help="Current week",
     )
 
     group.add_argument(
         "--last-week",
         action="store_true",
-        help="Last week's report",
+        help="Previous week",
     )
 
     group.add_argument(
         "--month",
         action="store_true",
-        help="This month's report",
+        help="Current month",
     )
 
     group.add_argument(
         "--last-month",
         action="store_true",
-        help="Last month's report",
+        help="Previous month",
     )
 
     parser.add_argument(
-        "--from-date",
-        help="YYYY-MM-DD",
+        "--report-type",
+        choices=['daily', 'weekly', 'monthly', 'quarterly'],
+        help="daily/weekly/monthly",
     )
 
     parser.add_argument(
@@ -66,84 +92,178 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--project",
-        help="Project filter",
+        "--from-date",
+        help="YYYY-MM-DD",
+    )
+
+    parser.add_argument(
+        "--display",
+        action="store_true",
+        help="Display Only",
     )
 
     return parser.parse_args()
 
-def resolve_period(args):
-    # 任意期間
+
+def resolve_args(
+    args: argparse.Namespace,
+) -> tuple[str, str, str]:
     if args.from_date or args.to_date:
         if not args.from_date:
             raise ValueError(
                 "--from-date is required"
             )
-
         if not args.to_date:
             raise ValueError(
                 "--to-date is required"
             )
+        if not args.report_type:
+            raise ValueError(
+                "--report_type is required"
+            )
+
+        if args.report_type == "daily":
+            report_type, template_id = daily_report()
+        elif args.report_type == "weekly":
+            report_type, template_id = weekly_report()
+        elif args.report_type == "monthly":
+            report_type, template_id = monthly_report()
+        elif args.report_type == "quarterly":
+            report_type, template_id = quarterly_report()
 
         return (
-            args.from_date,
-            args.to_date,
-            f"{args.from_date} ~ {args.to_date}",
+            (args.from_date, args.to_date, f"{args.from_date} ~ {args.to_date}"),
+            (report_type, template_id)
+        )
+    else:
+        if args.yesterday:
+            return (
+                yesterday_range(),
+                daily_report(),
+            )
+        if args.week:
+            return (
+                week_range(),
+                weekly_report(),
+            )
+        if args.last_week:
+            return (
+                last_week_range(),
+                weekly_report(),
+            )
+        if args.month:
+            return (
+                month_range(),
+                monthly_report(),
+            )
+        if args.last_month:
+            return (
+                last_month_range(),
+                monthly_report(),
+            )
+
+        return (
+            today_range(),
+            daily_report(),
         )
 
-    # 固定オプション
-    if args.week:
-        start, end = week_range()
+def main() -> int:
+    configure_logging()
 
-    elif args.last_week:
-        start, end = last_week_range()
+    try:
+        args = parse_args()
 
-    elif args.month:
-        start, end = month_range()
+        register_mode = True
+        if args.display:
+            register_mode = False
 
-    elif args.last_month:
-        start, end = last_month_range()
-    elif args.yesterday:
-        start, end = yesterday_range()
+        (start_date, end_date, report_name), (report_type, template_id) = resolve_args(args)
 
-    else:
-        start, end = today_range()
+        logger.info(
+            "Target period: %s - %s",
+            start_date,
+            end_date,
+        )
 
-    return (
-        start,
-        end,
-        f"{start} ~ {end}",
-    )
+        notion = NotionClient()
 
-def main():
-    args = parse_args()
+        tasks = notion.query_tasks(
+            start_date=start_date,
+            end_date=end_date,
+        )
 
-    start_date, end_date, period_label = (
-        resolve_period(args)
-    )
+        logger.info(
+            "Fetched %s tasks",
+            len(tasks),
+        )
 
-    notion = NotionClient()
+        summary = summarize(tasks)
 
-    filter_payload = notion.build_filter(
-        from_date=start_date,
-        to_date=end_date,
-        status="Done",
-        project=args.project,
-    )
+        project_summary = format_project_summary(summary)
 
-    results = notion.query_database(
-        filter_payload
-    )
+        task_details = format_task_details(summary)
 
-    summary = summarize(results)
+        if register_mode == True:
+            notion.upsert_report(
+                report_name=report_name,
+                report_type=report_type,
+                template_id=template_id,
+                project_summary=project_summary,
+                start_date=start_date,
+                end_date=end_date,
+            )
 
-    output = format_summary(
-        summary,
-        period_label,
-    )
+            copy_to_clipboard(task_details)
 
-    print(output)
+            print()
+            print("========================================")
+            print("Report updated successfully")
+            print("========================================")
+            print()
+
+            print(f"Report Name : {report_name}")
+            print(f"Period      : {start_date} ~ {end_date}")
+            print()
+
+            print(project_summary)
+
+            print()
+            print("Task details copied to clipboard.")
+            print()
+
+        else:
+            print()
+            print("========================================")
+            print("Report")
+            print("========================================")
+            print()
+
+            print(f"Report Name : {report_name}")
+            print(f"Period      : {start_date} ~ {end_date}")
+            print()
+
+            print(project_summary)
+
+            print()
+            print("========================================")
+            print("Task List")
+            print("========================================")
+            print()
+            print(task_details)
+
+        return 0
+
+    except Exception as exc:
+        logger.exception("Unexpected error")
+
+        print()
+        print("ERROR")
+        print("-----")
+        print(str(exc))
+        print()
+
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

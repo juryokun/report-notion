@@ -1,37 +1,39 @@
-def format_summary(
-    summary,
-    period_label,
-):
-    lines = []
+from typing import Any
 
-    lines.append("=== Project Summary ===")
-    lines.append(f"Period: {period_label}")
-    lines.append("")
 
-    for project, spent in sorted(
-        summary["project_totals"].items()
-    ):
-        lines.append(
-            f"{project}  {spent:.2f}h"
-        )
+def format_project_summary(
+    summary: dict[str, Any],
+) -> str:
+    lines: list[str] = []
+
+    project_totals = summary["project_totals"]
+
+    for project, spent_time in sorted(project_totals.items()):
+        lines.append(f"{project}\u3000{spent_time:.2f}h")
 
     lines.append("--")
     lines.append(
-        f"Total  {summary['total_time']:.2f}h"
+        f"Total\u3000{summary['total_time']:.2f}h"
     )
 
-    lines.append("")
-    lines.append("=== Task Details ===")
-    lines.append("")
+    return "\n".join(lines)
 
-    for project, tasks in sorted(
-        summary["project_tasks"].items()
-    ):
-        lines.append(project)
+
+def format_task_details(
+    summary: dict[str, Any],
+) -> str:
+    lines: list[str] = []
+
+    project_tasks = summary["project_tasks"]
+
+    for project, tasks in sorted(project_tasks.items()):
+        lines.append(f"### {project}")
+        lines.append("")
 
         for task in tasks:
             lines.append(
-                f"- {task['name']}  {task['spent_time']:.2f}h"
+                f"- {task['name']}\u3000"
+                f"{task['spent_time']:.2f}h"
             )
 
         lines.append("")

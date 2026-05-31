@@ -1,33 +1,43 @@
 from collections import defaultdict
+from typing import Any
 
 
-def extract_title(page):
-    titles = page["properties"]["Name"]["title"]
+def extract_title(page: dict[str, Any]) -> str:
+    try:
+        title = page["properties"]["Name"]["title"]
 
-    if not titles:
+        if not title:
+            return "(No Title)"
+
+        return title[0]["plain_text"]
+
+    except (KeyError, IndexError, TypeError):
         return "(No Title)"
 
-    return titles[0]["plain_text"]
 
+def extract_project(page: dict[str, Any]) -> str:
+    try:
+        project = page["properties"]["ProjectName"]["formula"]["string"]
 
-def extract_project(page):
-    project = page["properties"]["ProjectName"]["formula"]
+        return project or "No Project"
 
-    if not project:
+    except (KeyError, TypeError):
         return "No Project"
 
-    return project["string"]
+
+def extract_spent_time(page: dict[str, Any]) -> float:
+    try:
+        value = page["properties"]["Spent Time"]["number"]
+
+        return float(value or 0)
+
+    except (KeyError, TypeError, ValueError):
+        return 0.0
 
 
-def extract_spent_time(page):
-    value = page["properties"]["Spent Time"]["number"]
-
-    return value or 0.0
-
-
-def summarize(results):
-    project_totals = defaultdict(float)
-    project_tasks = defaultdict(list)
+def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
+    project_totals: dict[str, float] = defaultdict(float)
+    project_tasks: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     total_time = 0.0
 
@@ -39,10 +49,12 @@ def summarize(results):
         project_totals[project] += spent_time
         total_time += spent_time
 
-        project_tasks[project].append({
-            "name": task_name,
-            "spent_time": spent_time,
-        })
+        project_tasks[project].append(
+            {
+                "name": task_name,
+                "spent_time": spent_time,
+            }
+        )
 
     return {
         "project_totals": dict(project_totals),

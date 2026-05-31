@@ -1,14 +1,21 @@
+import logging
+from typing import Any
+
 import requests
 
 from settings import (
     NOTION_TOKEN,
-    NOTION_DATABASE_ID,
     NOTION_VERSION,
+    REPORT_DATABASE_ID,
+    TASK_DATABASE_ID,
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 class NotionClient:
-    def __init__(self):
+    def __init__(self) -> None:
         self.base_url = "https://api.notion.com/v1"
 
         self.headers = {
@@ -17,92 +24,291 @@ class NotionClient:
             "Content-Type": "application/json",
         }
 
-    def build_filter(
+    #
+    # Common
+    #
+
+    def _post(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            response = requests.post(
+                url,
+                headers=self.headers,
+                json=payload,
+                timeout=30,
+            )
+
+            response.raise_for_status()
+
+            return response.json()
+
+        except requests.exceptions.RequestException as exc:
+            logger.exception("Notion API POST failed")
+            raise RuntimeError(
+                f"Failed to call Notion API: {exc}"
+            ) from exc
+
+    def _patch(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            response = requests.patch(
+                url,
+                headers=self.headers,
+                json=payload,
+                timeout=30,
+            )
+
+            response.raise_for_status()
+
+            return response.json()
+
+        except requests.exceptions.RequestException as exc:
+            logger.exception("Notion API PATCH failed")
+            raise RuntimeError(
+                f"Failed to call Notion API: {exc}"
+            ) from exc
+
+    #
+    # Task DB
+    #
+
+    def query_tasks(
         self,
-        status="Done",
-        from_date=None,
-        to_date=None,
-        project=None,
-    ):
-        conditions = []
+        start_date: str,
+        end_date: str,
+        status: str = "Done",
+    ) -> list[dict[str, Any]]:
+        """
+        Task DBから条件に一致するタスクを取得する。
+        """
 
-        # Status filter
-        if status:
-            conditions.append({
-                "property": "Status",
-                "status": {
-                    "equals": status
-                }
-            })
+        url = f"{self.base_url}/databases/{TASK_DATABASE_ID}/query"
 
-        if from_date:
-            conditions.append({
-                "property": "Date",
-                "date": {
-                    "on_or_after": from_date
-                }
-            })
-
-        if to_date:
-            conditions.append({
-                "property": "Date",
-                "date": {
-                    "on_or_before": to_date
-                }
-            })
-
-        # Project filter
-        if project:
-            conditions.append({
-                "property": "ProjectName",
-                "formula": {
-                    "string": {
-                        "equals": project
-                    }
-                }
-            })
-
-        return {
-            "and": conditions
+        filter_payload = {
+            "and": [
+                {
+                    "property": "Status",
+                    "status": {
+                        "equals": status,
+                    },
+                },
+                {
+                    "property": "Date",
+                    "date": {
+                        "on_or_after": start_date,
+                    },
+                },
+                {
+                    "property": "Date",
+                    "date": {
+                        "on_or_before": end_date,
+                    },
+                },
+            ]
         }
 
-    def query_database(
-        self,
-        filter_payload,
-        page_size=100,
-    ):
-        url = (
-            f"{self.base_url}/databases/"
-            f"{NOTION_DATABASE_ID}/query"
-        )
-
-        all_results = []
-        next_cursor = None
+        results: list[dict[str, Any]] = []
+        next_cursor: str | None = None
 
         while True:
-            payload = {
+            payload: dict[str, Any] = {
                 "filter": filter_payload,
-                "page_size": page_size,
+                "page_size": 100,
             }
 
             if next_cursor:
                 payload["start_cursor"] = next_cursor
 
-            response = requests.post(
-                url,
-                headers=self.headers,
-                json=payload,
-            )
+            data = self._post(url, payload)
 
-            response.raise_for_status()
-
-            data = response.json()
-
-            all_results.extend(data["results"])
+            results.extend(data["results"])
 
             if not data["has_more"]:
                 break
 
             next_cursor = data["next_cursor"]
 
-        return all_results
+        logger.info(
+            "Fetched %s tasks (%s - %s)",
+            len(results),
+            start_date,
+            end_date,
+        )
+
+        return results
+
+    #
+    # Report DB
+    #
+
+    def find_report_by_name(
+        self,
+        report_name: str,
+    ) -> str | None:
+        """
+        Report DBからNameでレポートを検索する。
+        """
+
+        url = f"{self.base_url}/databases/{REPORT_DATABASE_ID}/query"
+
+        payload = {
+            "filter": {
+                "property": "Name",
+                "title": {
+                    "equals": report_name,
+                },
+            }
+        }
+
+        data = self._post(url, payload)
+
+        results = data["results"]
+
+        if not results:
+            return None
+
+        return results[0]["id"]
+
+    def create_report(
+        self,
+        report_name: str,
+        report_type: str,
+        template_id: str,
+        project_summary: str,
+        start_date: str,
+        end_date: str,
+    ) -> None:
+        """
+        Reportページを新規作成する。
+        """
+
+        url = f"{self.base_url}/pages"
+
+        date_property = {
+            "start": start_date,
+        }
+
+        if start_date != end_date:
+            date_property["end"] = end_date
+
+        payload = {
+            "parent": {
+                "database_id": REPORT_DATABASE_ID,
+            },
+            "template": {
+                "type": "template_id",
+                "template_id": template_id,
+            },
+            "properties": {
+                "Name": {
+                    "title": [
+                        {
+                            "text": {
+                                "content": report_name,
+                            }
+                        }
+                    ]
+                },
+                "Type": {
+                    "select": {
+                        "name": report_type,
+                    }
+                },
+                "ProjectsSummary": {
+                    "rich_text": [
+                        {
+                            "text": {
+                                "content": project_summary,
+                            }
+                        }
+                    ]
+                },
+                "Date": {
+                    "date": date_property,
+                },
+            },
+        }
+
+        self._post(url, payload)
+
+        logger.info("Created report: %s", report_name)
+
+    def update_report(
+        self,
+        page_id: str,
+        report_type: str,
+        project_summary: str,
+        start_date: str,
+        end_date: str,
+    ) -> None:
+        """
+        Reportページを更新する。
+        """
+
+        url = f"{self.base_url}/pages/{page_id}"
+
+        date_property = {
+            "start": start_date,
+        }
+
+        if start_date != end_date:
+            date_property["end"] = end_date
+
+        payload = {
+            "properties": {
+                "ProjectsSummary": {
+                    "rich_text": [
+                        {
+                            "text": {
+                                "content": project_summary,
+                            }
+                        }
+                    ]
+                },
+                "Type": {
+                    "select": {
+                        "name": report_type,
+                    }
+                },
+                "Date": {
+                    "date": date_property,
+                },
+            }
+        }
+
+        self._patch(url, payload)
+
+        logger.info("Updated report: %s", page_id)
+
+    def upsert_report(
+        self,
+        report_name: str,
+        report_type: str,
+        template_id: str,
+        project_summary: str,
+        start_date: str,
+        end_date: str,
+    ) -> None:
+        """
+        Nameで検索し、存在すれば更新、
+        存在しなければ新規作成する。
+        """
+
+        page_id = self.find_report_by_name(report_name)
+
+        if page_id:
+            self.update_report(
+                page_id=page_id,
+                report_type=report_type,
+                project_summary=project_summary,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            return
+
+        self.create_report(
+            report_name=report_name,
+            report_type=report_type,
+            template_id=template_id,
+            project_summary=project_summary,
+            start_date=start_date,
+            end_date=end_date,
+        )
