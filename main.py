@@ -4,28 +4,27 @@ import sys
 
 from clipboard import copy_to_clipboard
 from date_range import (
-    today_range,
-    yesterday_range,
-    week_range,
+    last_month_range,
     last_week_range,
     month_range,
-    last_month_range,
+    today_range,
+    week_range,
+    yesterday_range,
 )
 from formatter import (
     format_project_summary,
     format_task_details,
 )
 from notion_client import NotionClient
-from summarizer import summarize
 from report_type import (
+    annual_report,
     daily_report,
-    weekly_report,
     monthly_report,
     quarterly_report,
     semiannual_report,
-    annual_report,
+    weekly_report,
 )
-
+from summarizer import summarize
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +37,7 @@ def configure_logging() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Generate Notion work reports."
-    )
+    parser = argparse.ArgumentParser(description="Generate Notion work reports.")
 
     group = parser.add_mutually_exclusive_group()
 
@@ -82,8 +79,8 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--report-type",
-        choices=['daily', 'weekly', 'monthly', 'quarterly'],
-        help="daily/weekly/monthly",
+        choices=["daily", "weekly", "monthly", "quarterly", "semiannual", "annual"],
+        help="daily/weekly/monthly/quarterly/semiannual/annual",
     )
 
     parser.add_argument(
@@ -107,20 +104,14 @@ def parse_args() -> argparse.Namespace:
 
 def resolve_args(
     args: argparse.Namespace,
-) -> tuple[str, str, str]:
+) -> tuple[tuple[str, str, str], tuple[str, str]]:
     if args.from_date or args.to_date:
         if not args.from_date:
-            raise ValueError(
-                "--from-date is required"
-            )
+            raise ValueError("--from-date is required")
         if not args.to_date:
-            raise ValueError(
-                "--to-date is required"
-            )
+            raise ValueError("--to-date is required")
         if not args.report_type:
-            raise ValueError(
-                "--report_type is required"
-            )
+            raise ValueError("--report_type is required")
 
         if args.report_type == "daily":
             report_type, template_id = daily_report()
@@ -130,10 +121,14 @@ def resolve_args(
             report_type, template_id = monthly_report()
         elif args.report_type == "quarterly":
             report_type, template_id = quarterly_report()
+        elif args.report_type == "semiannual":
+            report_type, template_id = semiannual_report()
+        else:
+            report_type, template_id = annual_report()
 
         return (
             (args.from_date, args.to_date, f"{args.from_date} ~ {args.to_date}"),
-            (report_type, template_id)
+            (report_type, template_id),
         )
     else:
         if args.yesterday:
@@ -167,6 +162,7 @@ def resolve_args(
             daily_report(),
         )
 
+
 def main() -> int:
     configure_logging()
 
@@ -177,7 +173,9 @@ def main() -> int:
         if args.display:
             register_mode = False
 
-        (start_date, end_date, report_name), (report_type, template_id) = resolve_args(args)
+        (start_date, end_date, report_name), (report_type, template_id) = resolve_args(
+            args
+        )
 
         logger.info(
             "Target period: %s - %s",
@@ -203,7 +201,7 @@ def main() -> int:
 
         task_details = format_task_details(summary)
 
-        if register_mode == True:
+        if register_mode:
             notion.upsert_report(
                 report_name=report_name,
                 report_type=report_type,
