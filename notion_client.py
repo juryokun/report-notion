@@ -10,7 +10,6 @@ from settings import (
     TASK_DATABASE_ID,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -43,9 +42,7 @@ class NotionClient:
 
         except requests.exceptions.RequestException as exc:
             logger.exception("Notion API POST failed")
-            raise RuntimeError(
-                f"Failed to call Notion API: {exc}"
-            ) from exc
+            raise RuntimeError(f"Failed to call Notion API: {exc}") from exc
 
     def _patch(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -62,9 +59,7 @@ class NotionClient:
 
         except requests.exceptions.RequestException as exc:
             logger.exception("Notion API PATCH failed")
-            raise RuntimeError(
-                f"Failed to call Notion API: {exc}"
-            ) from exc
+            raise RuntimeError(f"Failed to call Notion API: {exc}") from exc
 
     #
     # Task DB
@@ -91,13 +86,13 @@ class NotionClient:
                     },
                 },
                 {
-                    "property": "Date",
+                    "property": "Finished Date",
                     "date": {
                         "on_or_after": start_date,
                     },
                 },
                 {
-                    "property": "Date",
+                    "property": "Finished Date",
                     "date": {
                         "on_or_before": end_date,
                     },

@@ -25,21 +25,21 @@ def extract_project(page: dict[str, Any]) -> str:
         return "No Project"
 
 
-def extract_spent_time(page: dict[str, Any]) -> float:
+def extract_spent_time(page: dict[str, Any]) -> int:
     try:
-        value = page["properties"]["Spent Time"]["number"]
+        value = page["properties"]["SpentTime"]["formula"]["number"]
 
-        return float(value or 0)
+        return int(value or 0)
 
     except (KeyError, TypeError, ValueError):
-        return 0.0
+        return 0
 
 
 def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
-    project_totals: dict[str, float] = defaultdict(float)
+    project_totals: dict[str, int] = defaultdict(int)
     project_tasks: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
-    total_time = 0.0
+    total_time: int = 0
 
     for page in results:
         project = extract_project(page)

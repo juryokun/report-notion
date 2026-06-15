@@ -9,12 +9,12 @@ def format_project_summary(
     project_totals = summary["project_totals"]
 
     for project, spent_time in sorted(project_totals.items()):
-        lines.append(f"{project}\u3000{spent_time:.2f}h")
+        spent_time_label = convert_time(spent_time)
+        lines.append(f"{project}\u3000{spent_time_label}")
 
+    total_time_label = convert_time(summary["total_time"])
     lines.append("--")
-    lines.append(
-        f"Total\u3000{summary['total_time']:.2f}h"
-    )
+    lines.append(f"Total\u3000{total_time_label}")
 
     return "\n".join(lines)
 
@@ -31,11 +31,14 @@ def format_task_details(
         lines.append("")
 
         for task in tasks:
-            lines.append(
-                f"- {task['name']}\u3000"
-                f"{task['spent_time']:.2f}h"
-            )
+            spent_time_label = convert_time(task["spent_time"])
+            lines.append(f"- {task['name']}\u3000{spent_time_label}")
 
         lines.append("")
 
     return "\n".join(lines)
+
+
+def convert_time(minute: int) -> str:
+    result_hour, result_minute = divmod(minute, 60)
+    return f"{result_hour}h {result_minute:02}m"

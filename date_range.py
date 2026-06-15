@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 
+
 def today_range() -> tuple[str, str, str]:
     today = date.today()
 
@@ -9,6 +10,7 @@ def today_range() -> tuple[str, str, str]:
         f"{today.isoformat()}",
     )
 
+
 def yesterday_range() -> tuple[str, str, str]:
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -16,27 +18,26 @@ def yesterday_range() -> tuple[str, str, str]:
     return (
         yesterday.isoformat(),
         yesterday.isoformat(),
-        f"{today.isoformat()}",
+        f"{yesterday.isoformat()}",
     )
 
 
 def week_range() -> tuple[str, str, str]:
     today = date.today()
     start = today - timedelta(days=today.weekday())
+    end = start + timedelta(days=6)
 
     return (
         start.isoformat(),
-        today.isoformat(),
-        f"{start.isoformat()} ~ {today.isoformat()}",
+        end.isoformat(),
+        f"{start.isoformat()} ~ {end.isoformat()}",
     )
 
 
 def last_week_range() -> tuple[str, str, str]:
     today = date.today()
 
-    this_week_start = today - timedelta(
-        days=today.weekday()
-    )
+    this_week_start = today - timedelta(days=today.weekday())
 
     start = this_week_start - timedelta(days=7)
     end = this_week_start - timedelta(days=1)
@@ -52,10 +53,17 @@ def month_range() -> tuple[str, str, str]:
     today = date.today()
     start = today.replace(day=1)
 
+    if today.month == 12:
+        next_month = date(today.year + 1, 1, 1)
+    else:
+        next_month = date(today.year, today.month + 1, 1)
+
+    end = next_month - timedelta(days=1)
+
     return (
         start.isoformat(),
-        today.isoformat(),
-        f"{today:%Y-%m}",
+        end.isoformat(),
+        f"{start:%Y-%m}",
     )
 
 
@@ -64,9 +72,7 @@ def last_month_range() -> tuple[str, str, str]:
 
     first_day_this_month = today.replace(day=1)
 
-    last_day_prev_month = (
-        first_day_this_month - timedelta(days=1)
-    )
+    last_day_prev_month = first_day_this_month - timedelta(days=1)
 
     start = last_day_prev_month.replace(day=1)
 
